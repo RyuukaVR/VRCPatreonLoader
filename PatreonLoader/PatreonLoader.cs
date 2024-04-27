@@ -6,6 +6,8 @@ using VRC.SDK3.StringLoading;
 using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
+using Ryuuka;
+
 //For Beautiful Editor UwU
 #if UNITY_EDITOR
 using UnityEditor;
@@ -19,12 +21,6 @@ public class PatreonLoader : UdonSharpBehaviour
 
     [Header("Patreon Link")]
     [SerializeField] private VRCUrl PatreonUrl;
-
-    [Tooltip("How your string separate the tiers?"), SerializeField]
-    private string separateTiers = ":";
-
-    [Tooltip("How your string separate the names?"), SerializeField]
-    private char separateNames = '*';
 
     [Space(30)]
 
@@ -72,7 +68,6 @@ public class PatreonLoader : UdonSharpBehaviour
     [Tooltip("This is the string customevent who will send to another udonbehaviours")]
     public string CustomEventName;
 
-    [HideInInspector]public string version = "V2.0";
     [NonSerialized] public bool IsPatreon;
     [NonSerialized] public int Patreontier = -1; // -1 = is not patreon. Start with everyone not being patreon
     #endregion
@@ -182,8 +177,8 @@ public class PatreonLoader : UdonSharpBehaviour
     public override void OnStringLoadSuccess(IVRCStringDownload result)
     {
         PatreonPage = result.Result;
-        PatreonTiers = PatreonPage.Split(new string[] { separateTiers }, StringSplitOptions.None);
-        PatreonNames = String.Join("*", PatreonTiers).Split(new char[] { separateNames }, StringSplitOptions.RemoveEmptyEntries);
+        PatreonTiers = PatreonPage.Split(new string[] { ":" }, StringSplitOptions.None);
+        PatreonNames = String.Join("*", PatreonTiers).Split(new char[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
 
         //Call This To Change the colors
         ConvertColorsToHex();
@@ -194,13 +189,13 @@ public class PatreonLoader : UdonSharpBehaviour
             {
                 if (useThisSize == true)
                 {
-                    string[] patreons = PatreonTiers[i].Split(new char[] { separateNames }, StringSplitOptions.RemoveEmptyEntries);
+                    string[] patreons = PatreonTiers[i].Split(new char[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
                     FinalText = FinalText + $"<b><size={TierSize[i]}><{TierColors[i]}>{TierNames[i]}</b><br><size={patreonNameSize}>{string.Join(" ", patreons)}<br><br>";
                 }
                 else
                 {
-                    string[] patreons = PatreonTiers[i].Split(new char[] { separateNames }, StringSplitOptions.RemoveEmptyEntries);
-                    FinalText = FinalText + $"{string.Join(" ", patreons)}<br>";
+                    string[] patreons = PatreonTiers[i].Split(new char[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
+                    FinalText = FinalText + $"<b><{TierColors[i]}>{TierNames[i]}</b><br>{string.Join(" ", patreons)}<br><br>";
                 }
 
             }
@@ -260,33 +255,72 @@ public class PatreonLoader : UdonSharpBehaviour
 
 #if UNITY_EDITOR
 [CustomEditor(typeof(PatreonLoader))]
-class PatreonLoaderEditor : Editor
+class YTSearchEditor : Editor
 {
+    #region Variables
+    private Texture2D discordLogo;
+    private Texture2D patreonLogo;
+    private Texture2D RyuLogo;
+    private bool showInternal = true;
+    private SerializedProperty CustomEventSTR;
+
+    #endregion
+
+    private void OnEnable()
+    {
+        discordLogo = Resources.Load<Texture2D>("DiscordIcon");
+        patreonLogo = Resources.Load<Texture2D>("PatreonIcon");
+        RyuLogo = Resources.Load<Texture2D>("RyuukaLogo278");
+    }
+
     public override void OnInspectorGUI()
     {
-        GUIStyle headerText = new GUIStyle(GUI.skin.label)
+        HeaderGui();
+    }
+
+    private void HeaderGui()
+    {
+        using (new EditorGUILayout.HorizontalScope())
         {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 18,
-            fontStyle = FontStyle.Bold
-        };
-        GUIStyle lowerText = new GUIStyle(GUI.skin.label)
+            GUILayout.FlexibleSpace();
+            GUILayout.Box(RyuLogo, GUIStyle.none);
+            GUILayout.FlexibleSpace();
+        }
+
+        GUILayout.Box("", GUILayout.ExpandWidth(true), GUILayout.Height(5));
+
+        using (new EditorGUILayout.HorizontalScope())
         {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 15,
-            fontStyle = FontStyle.Normal
-        };
-        GUIStyle centerText = new GUIStyle(GUI.skin.label)
+            GUILayout.FlexibleSpace();
+
+            if (GUILayout.Button(patreonLogo, GUILayout.Width(60), GUILayout.Height(35)))
+            {
+                Application.OpenURL("https://www.patreon.com/RyuukaVR");
+            }
+
+            GUILayout.Space(10);
+
+            if (GUILayout.Button(discordLogo, GUILayout.Width(60), GUILayout.Height(35)))
+            {
+                Application.OpenURL("https://discord.gg/g3kjx5EuTw");
+            }
+            GUILayout.FlexibleSpace();
+        }
+
+        GUILayout.Box("", GUILayout.ExpandWidth(true), GUILayout.Height(5));
+        using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
         {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 13,
-            fontStyle = FontStyle.Normal
-        };
-        PatreonLoader patreonloader = (PatreonLoader)serializedObject.targetObject;
-        GUILayout.Label("Patreon Loader", headerText);
-        GUILayout.Label("Made by RyuukaVR", lowerText);
-        DrawDefaultInspector();
-        GUILayout.Label($"{patreonloader.version}", centerText);
+            using (new EditorGUILayout.VerticalScope())
+            {
+                showInternal = EditorGUILayout.Foldout(showInternal, "    Internal", true, EditorStyles.boldLabel);
+                if (showInternal)
+                {
+                    DrawDefaultInspector();
+                }
+            }
+           
+        }
+        GUILayout.Box("", GUILayout.ExpandWidth(true), GUILayout.Height(5));
     }
 }
 #endif
