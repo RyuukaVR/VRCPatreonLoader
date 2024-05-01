@@ -176,6 +176,7 @@ public class PatreonLoader : UdonSharpBehaviour
 
     public override void OnStringLoadSuccess(IVRCStringDownload result)
     {
+        FinalText = "";
         PatreonPage = result.Result;
         PatreonTiers = PatreonPage.Split(new string[] { ":" }, StringSplitOptions.None);
         PatreonNames = String.Join("*", PatreonTiers).Split(new char[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
