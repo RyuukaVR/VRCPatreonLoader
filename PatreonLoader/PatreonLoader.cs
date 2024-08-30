@@ -6,13 +6,18 @@ using VRC.SDK3.StringLoading;
 using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
-using Ryuuka;
+using VRC.Economy;
+using UnityEngine.UI;
+using JetBrains.Annotations;
+
+
 
 //For Beautiful Editor UwU
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
+
 
 public class PatreonLoader : UdonSharpBehaviour
 {
@@ -35,7 +40,14 @@ public class PatreonLoader : UdonSharpBehaviour
     [Space(30)]
 
     [Header("PatreonBoard")]
-
+    
+    [SerializeField]
+    private ScrollRect scrollRect;
+    private bool moveway = true;
+    [SerializeField]
+    private float scrollWait = 3;
+    private float timer;
+    [Range(0, 0.5f),SerializeField] private float TextSpeed = 0.05f;
     [Tooltip("The textmeshpro who will hold your patreon names! \n \n Need be the UI TextMeshPro"), SerializeField]
     private TextMeshProUGUI PatreonBoard;
 
@@ -57,18 +69,30 @@ public class PatreonLoader : UdonSharpBehaviour
     [Tooltip("Choose the size of the Patreon names. Recommended to be slightly smaller than TierSize!"), SerializeField]
     private float patreonNameSize;
 
+    [Space(30)]
+
+    [Header("Creator Economy")]
+
+    public UdonProduct[] udonProducts;
+    public int[] equivalentTier;
+    private string productowners;
+    private bool loaded;
+    private int loadedProducts;
+
+    [Space(30)]
+
     [Header("Patreon Benefits")]
 
     [Tooltip("Specify the tiers to be excluded from receiving benefits. Enter the index of the tier names array. For example, if 'TipJar' is element 0 in TierNames, enter 0 here to exclude it from receiving benefits"), SerializeField]
     private int[] excludeTier;
 
-    [Tooltip("select udonbehaviours to receive the custom event adn only the patreon will execute that")]
+    [Tooltip("select udonbehaviours to receive the custom event and only the patreon will execute that")]
     public UdonBehaviour[] PatreonBenefits;
 
     [Tooltip("This is the string customevent who will send to another udonbehaviours")]
     public string CustomEventName;
 
-    [NonSerialized] public bool IsPatreon;
+    [NonSerialized] public bool IsPatreon = false;
     [NonSerialized] public int Patreontier = -1; // -1 = is not patreon. Start with everyone not being patreon
     #endregion
 
@@ -129,6 +153,9 @@ public class PatreonLoader : UdonSharpBehaviour
         }
         #endregion
 
+        productowners = "<b><br>Creator Economy Supporters<br>";
+        PatreonBoard.gameObject.SetActive(false);
+
         if (setAlphaToMax)
         {
             for (int i = 0; i < ChooseColors.Length; i++)
@@ -139,7 +166,47 @@ public class PatreonLoader : UdonSharpBehaviour
         localname = Networking.LocalPlayer.displayName;
         TierColors = new string[ChooseColors.Length]; //Set the TierColors to ChooseColors Lenght
         PatreonDownload();
+    }
 
+    public override void OnListProductOwners(IProduct product, string[] owners)
+    {
+        if (product != null)
+        {
+            Debug.Log($"{DebugPrefix} <Color=green>[CreatorEconomy]</color> Loaded product owners {product.ID} {product.Name} ({owners.Length} Owners)");
+            foreach (var owner in owners)
+            {
+                if (owner != null)
+                {
+                    productowners += owner + " ";
+                }
+            }
+        }
+        loadedProducts++;
+        if(loadedProducts >= udonProducts.Length) UpdateProductOwners();
+    }
+
+    public override void OnPurchasesLoaded(IProduct[] products, VRCPlayerApi player)
+    {
+        if (!player.isLocal) return;
+        Debug.Log($"{DebugPrefix} PurchasesLoaded called");
+        Debug.Log($"{DebugPrefix} purchases lenght {products.Length} ");
+
+        for (int i = 0; i < udonProducts.Length; i++)
+        {
+            if (Store.DoesPlayerOwnProduct(player, udonProducts[i]))
+            {
+                Debug.Log($"{DebugPrefix}<Color=green>[CreatorEconomy]</color> Player have the udon product");
+                Patreontier = equivalentTier[i];
+                IsPatreon = true;
+                GiveBenefits(equivalentTier[i]);
+                break;
+            }
+            else
+            {
+                Debug.Log($"{DebugPrefix}<Color=green>[CreatorEconomy]</color> Player dont have a product");
+            }
+        }
+        loaded = true;
     }
 
     public void PatreonDownload()
@@ -203,10 +270,11 @@ public class PatreonLoader : UdonSharpBehaviour
         }
         //Set The TMP To The Setted Up Text
         PatreonBoard.text = FinalText;
+        Debug.Log($"{DebugPrefix} Final Text in <Color=#Red>Patreon Loaded</color> is {FinalText}");
 
         //Confirm Patreon = False To Everyone
-        IsPatreon = false;
-        Patreontier = -1;
+        //IsPatreon = false;
+        //Patreontier = -1;
 
         //Check If The DisplayName = PatreonName And Set The Patreon Tier
         foreach (string patreonname in PatreonNames)
@@ -225,9 +293,50 @@ public class PatreonLoader : UdonSharpBehaviour
                 break;
             }
         }
-        if (IsPatreon)
+
+        if (IsPatreon) GiveBenefits(Patreontier);
+
+        for (int i = 0; i < udonProducts.Length; i++)
         {
-            GiveBenefits(Patreontier);
+            var udonProduct = udonProducts[i];
+            if (udonProduct != null)
+            {
+                Store.ListProductOwners((IUdonEventReceiver)this, udonProduct);
+            }
+        }
+
+        PatreonBoard.gameObject.SetActive(true);
+    }
+
+    private void UpdateProductOwners()
+    {
+        PatreonBoard.text = "";
+        PatreonBoard.text = FinalText + productowners;
+        Debug.Log($"{DebugPrefix} UpdateProductOwners productowners {productowners} /// FinalText {FinalText} ///");
+        Debug.Log($"{DebugPrefix} SHOULD APPEAR IN THE BOARD >>>>> {PatreonBoard.text}");
+    }
+
+    public override void OnPurchaseConfirmed(IProduct product, VRCPlayerApi player, bool purchasedNow)
+    {
+        if (!loaded && !purchasedNow) return;
+
+        bool isStoreProduct = false;
+        for (int i = 0; i < udonProducts.Length; i++)
+        {
+            if (product.ID == udonProducts[i].ID)
+            {
+                isStoreProduct = true;
+            }
+        }
+
+        if (isStoreProduct)
+        {
+            productowners += player.displayName;
+            for (int i = 0; i < udonProducts.Length; i++)
+            {
+                GiveBenefits(equivalentTier[i]);
+            }
+            UpdateProductOwners();
         }
     }
 
@@ -252,8 +361,34 @@ public class PatreonLoader : UdonSharpBehaviour
     {
         Debug.Log(result.Error);
     }
-}
 
+    private void Update()
+    {
+        if (scrollRect == null) return;
+
+        ScrollVertical();
+    }
+    void ScrollVertical()
+    {
+        if (scrollRect.verticalNormalizedPosition > 0 && scrollRect.verticalNormalizedPosition < 1)
+        {
+            if(timer >= 0)
+            {
+                timer -= Time.deltaTime;
+                return;
+            }
+            if (moveway)  scrollRect.verticalNormalizedPosition -= TextSpeed * Time.deltaTime;
+            else scrollRect.verticalNormalizedPosition += TextSpeed * Time.deltaTime;
+        }
+        else
+        {
+            moveway = !moveway;
+            timer = scrollWait;
+            if (scrollRect.verticalNormalizedPosition >= 1) scrollRect.verticalNormalizedPosition = 0.999f;
+            else scrollRect.verticalNormalizedPosition = 0.001f;
+        }
+    }
+}
 #if UNITY_EDITOR
 [CustomEditor(typeof(PatreonLoader))]
 class YTSearchEditor : Editor
@@ -319,7 +454,6 @@ class YTSearchEditor : Editor
                     DrawDefaultInspector();
                 }
             }
-           
         }
         GUILayout.Box("", GUILayout.ExpandWidth(true), GUILayout.Height(5));
     }
